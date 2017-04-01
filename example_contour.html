@@ -1,0 +1,106 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
+    <title>Simple Map</title>
+    <link rel="stylesheet" type="text/css" href="https://echo.arcgisserver.com/arcgis_js_v318_api/arcgis_js_api/library/3.18/3.18/dijit/themes/tundra/tundra.css">
+    <link rel="stylesheet" type="text/css" href="https://echo.arcgisserver.com/arcgis_js_v318_api/arcgis_js_api/library/3.18/3.18/esri/css/esri.css" />
+    <style>
+     html, body, #mapDiv {
+       height: 100%;
+       padding: 0;
+       margin: 0;
+     }
+    </style>
+    <script type="text/javascript" src="https://echo.arcgisserver.com/arcgis_js_v318_api/arcgis_js_api/library/3.18/3.18/init.js"></script>
+    <script type="text/javascript">
+     var app;
+     require(["esri/map",
+              "esri/layers/ArcGISDynamicMapServiceLayer",
+              "esri/tasks/Geoprocessor",
+              "esri/layers/FeatureLayer",
+              "esri/layers/ImageParameters",
+              "esri/tasks/query",
+              "esri/tasks/QueryTask",
+              "esri/tasks/FeatureSet",
+              "dojo/_base/array",
+              "dojo/domReady!"],
+             function(map, ArcGISDynamicMapServiceLayer, Geoprocessor, FeatureLayer, ImageParameters, Query, QueryTask, FeatureSet, arrayUtils) {
+               // create map instance
+               var map = new esri.Map("mapDiv");
+               
+               // add data layer
+               var dynamicLayerUrl = "https://echo.arcgisserver.com/arcgis/rest/services/MyGPService/ca_ozone/MapServer";
+               var dynamicLayer = new esri.layers.ArcGISDynamicMapServiceLayer(dynamicLayerUrl);
+               map.addLayer(dynamicLayer);
+
+               var gpProcessor = new esri.tasks.Geoprocessor("https://echo.arcgisserver.com/arcgis/rest/services/MyGPService/ca_ozone_gp/GPServer/mymodel");
+               gpProcessor.setOutputSpatialReference({wkid: 3310});
+
+               /*
+                * get a data set form a layer as the first parameter of GP service
+                */
+               var dataQueryTask = new esri.tasks.QueryTask("https://echo.arcgisserver.com/arcgis/rest/services/MyGPService/ca_ozone/FeatureServer/0");
+               var dataQuery = new esri.tasks.Query();
+               dataQuery.where = "1=1";
+               dataQuery.returnGeometry = true;
+               dataQuery.outFields = ["*"];
+
+               var dataSet = new esri.tasks.FeatureSet();
+
+               dataQueryTask.execute(dataQuery, function(results) {
+                 dataSet.features = results.features;
+
+                 /*
+                  * Get a region for clip, the second parameter of GP service
+                  */
+                 var queryTask = new esri.tasks.QueryTask("https://echo.arcgisserver.com/arcgis/rest/services/MyGPService/ca_ozone/FeatureServer/2");
+                 var query = new esri.tasks.Query();
+                 query.where = "1=1";
+                 query.returnGeometry = true;
+                 query.outFields = ["*"];
+
+                 var clip_outlines = new esri.tasks.FeatureSet();
+                 queryTask.execute(query, function(results) {
+                   clip_outlines.features = results.features;
+
+                   // setup the parameters of GP service
+                   var params = {
+                     "input" : dataSet,
+                     "outline": clip_outlines,
+                     "Z_value_field": "OZONE"
+                   };
+                   // Call asynchronous GP service
+                   gpProcessor.submitJob(params, function(jobInfo) {
+                     /* method 1:
+                      * Recommend way.
+                      */
+                     var imageParams = new esri.layers.ImageParameters();
+                     imageParams.imageSpatialReference = map.spatialReference;
+                     gpProcessor.getResultImageLayer(jobInfo.jobId, "output_clip", imageParams, function(gpLayer) {
+                       gpLayer.setOpacity(0.5);
+                       map.addLayer(gpLayer);
+                     });
+
+                     /* method 2
+                      *
+                      */
+                     //url = "https://echo.arcgisserver.com/arcgis/rest/services/MyGPService/ca_ozone_gp/MapServer/jobs" + "/" + jobInfo.jobId;
+                     //var hotspotLayer = new esri.layers.ArcGISDynamicMapServiceLayer(url, {
+                     //  "id": jobInfo.jobId
+                     //});
+                     //map.addLayer(hotspotLayer);
+                   }, function(jobInfo) {
+                     console.log(jobInfo.jobStatus);
+                     console.log(jobInfo.jobId);
+                   });
+                 });
+               });
+
+             });
+    </script>
+  </head>
+  <body class="tundra">
+    <div id="mapDiv" style="width:100%; height:100%; border:1px solid #000;"></div>
+  </body>
+</html>
